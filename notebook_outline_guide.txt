@@ -1,0 +1,21 @@
+1.1 Notebook Preparation 
+Import 
+Logging
+Data Reading In 
+
+1.2 Data Analysis
+
+Dataset Shape
+Dataset Dimensions
+Missing Values  -> Do NA need to be handled ? 
+Target distribution + Plotting + Proportion ->  Is rebalancing needed ? 
+Outlier Detection -> Do outlier need to be handled ?
+Find out non-numerical data 
+Find out outliers 
+
+1.3 Data Preprocessing 
+Handle missing value
+Encode non numerical data 
+Rebalancing of target value if needed 
+Scaling data if needed
+Datset splitting ? 
