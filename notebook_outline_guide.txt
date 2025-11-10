@@ -19,3 +19,16 @@ Encode non numerical data
 Rebalancing of target value if needed 
 Scaling data if needed
 Datset splitting ? 
+
+
+Models:
+- Random Forest
+- SVM
+- GradientBoosting
+
+Metrics:
+- Accuracy
+- Precision
+- Recall
+- F1
+- ROC-AUC
