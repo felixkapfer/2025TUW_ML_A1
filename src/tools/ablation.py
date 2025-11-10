@@ -24,21 +24,37 @@ def add_rf_scaled_space(prep_scaled, random_state=42):
 
 def add_svm_calibrated_space(prep_scaled, random_state=42):
     """
-    Platt scaling via CalibratedClassifierCV. Note: use smaller CV for the calibrator
-    to keep runtime reasonable.
+    Platt/Isotonic scaling via CalibratedClassifierCV. We keep probability=False on SVC—
+    calibration handles probabilities. Use a smaller cv for the calibrator to keep runtime sane.
     """
-    base_svm = SVC(probability=False, random_state=random_state)  # probability off; calibration handles probs
-    calibrated = CalibratedClassifierCV(base_svm, cv=3, method="sigmoid")
-    from sklearn.pipeline import Pipeline
+    # Underlying SVC
+    base_svm = SVC(probability=False, random_state=random_state)
+
+    # Wrap with calibrator; IMPORTANT: use estimator=... (not base_estimator)
+    calibrated = CalibratedClassifierCV(
+        estimator=base_svm,
+        cv=3,
+        method="sigmoid",
+        n_jobs=-1,  # optional, supported by CalibratedClassifierCV
+    )
+
     pipe = deepcopy(prep_scaled)
     pipe.steps.append(("clf", calibrated))
+
+    # IMPORTANT: grid must target `estimator`, not `base_estimator`
     grid = {
-        "clf__base_estimator__C": [0.5, 1, 4],
-        "clf__base_estimator__gamma": ["scale", 0.01],
-        # class weights via base estimator:
-        "clf__base_estimator__class_weight": [None, "balanced"],
+        # Calibrator hyperparams (optional to tune)
+        "clf__method": ["sigmoid", "isotonic"],  # isotonic can perform better with enough data
+        "clf__cv": [3, 5],
+
+        # Hyperparams of the underlying SVC live under `clf__estimator__*`
+        "clf__estimator__kernel": ["rbf", "linear"],
+        "clf__estimator__C": [0.5, 1, 4],
+        "clf__estimator__gamma": ["scale", 0.01],  # ignored when kernel='linear', harmless in grid
+        "clf__estimator__class_weight": [None, "balanced"],
     }
     return ("SVM+Calibrated", pipe, grid)
+
 
 def run_small_ablations(
     X_train, y_train, inner_cv, primary="roc_auc", n_jobs=-1, verbose=1,
