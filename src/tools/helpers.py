@@ -64,26 +64,46 @@ class DatasetSpec:
     - X_cols=None means 'use all columns except target_col and id_col (if provided)'.
     """
     csv_path: str
-    target_col: str
+    target_col: Optional[str]
     id_col: Optional[str] = None
     X_cols: Optional[list[str]] = None
 
-def load_dataset(spec: DatasetSpec) -> Tuple[pd.DataFrame, pd.Series, Optional[pd.Series]]:
+def load_dataset(spec: DatasetSpec) -> Tuple[pd.DataFrame, Optional[pd.Series], Optional[pd.Series]]:
     """
-    Load a CSV, split into X (features), y (target), and optional id series.
-    Returns:
-        X: DataFrame of features
-        y: Series of labels/targets
+    Load a CSV and split into:
+        X : DataFrame of features
+        y : Series of labels/targets or None (for test sets)
         ids: Series of IDs or None
+    Rules:
+    - If target_col is None or missing in the file, y=None (test mode).
+    - If X_cols is None, X = all columns minus {target_col, id_col} (those present).
+    - If X_cols is provided, X = df[X_cols] (and we do not auto-drop target/id).
     """
     df = pd.read_csv(spec.csv_path)
-    ids = df[spec.id_col] if spec.id_col and spec.id_col in df.columns else None
+    df.columns = df.columns.str.strip()
+
+    # IDs (optional)
+    ids = df[spec.id_col] if (spec.id_col and spec.id_col in df.columns) else None
+
+    # Determine if labels are available
+    has_target = bool(spec.target_col) and spec.target_col in df.columns
+
+    # Build X
     if spec.X_cols is None:
-        drop_cols = [spec.target_col] + ([spec.id_col] if spec.id_col and spec.id_col in df.columns else [])
-        X = df.drop(columns=[c for c in drop_cols if c in df.columns])
+        # Use everything except target/id that actually exist
+        drop_cols = []
+        if has_target:
+            drop_cols.append(spec.target_col)  # type: ignore[arg-type]
+        if spec.id_col and spec.id_col in df.columns:
+            drop_cols.append(spec.id_col)
+        X = df.drop(columns=drop_cols, errors="ignore")
     else:
+        # Respect explicit feature list
         X = df[spec.X_cols]
-    y = df[spec.target_col]
+
+    # Build y (None if no target)
+    y = df[spec.target_col] if has_target else None  # type: ignore[index]
+
     return X, y, ids
 
 

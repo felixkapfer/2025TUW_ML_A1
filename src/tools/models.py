@@ -53,11 +53,12 @@ def build_model_spaces(
     rf_pipe = deepcopy(prep_unscaled)
     rf_pipe.steps.append(("clf", RandomForestClassifier(random_state=random_state)))
     rf_grid = {
-        "clf__n_estimators": [200, 500],
-        "clf__max_depth": [None, 8, 16],
-        "clf__min_samples_leaf": [1, 2, 4],
-        "clf__class_weight": [None, "balanced_subsample"],
-    }
+        "clf__n_estimators": [400, 800, 1200],
+        "clf__max_depth": [None, 10, 20],
+        "clf__min_samples_leaf": [1, 2, 3],
+        "clf__max_features": ["sqrt", "log2"],
+        "clf__class_weight": [None, "balanced", "balanced_subsample"],
+}
 
     # SVM (needs scaling; probability=True for ROC-AUC and calibrated outputs)
     svm_pipe = deepcopy(prep_scaled)
@@ -201,25 +202,56 @@ def make_kaggle_submission(
     X_test,
     test_ids: Optional[pd.Series],
     out_path: str = "kaggle_submission.csv",
-    positive_label_name: str = "prediction"  # column name for the probability of positive class
+    positive_label_name: str = "class",
+    output: str = "label",
+    threshold: float = 0.5
 ) -> str:
     """
-    Generate a Kaggle-style CSV with probabilities for the positive class.
-    Columns:
-      - id (if provided) else a running index named 'id'
-      - <positive_label_name>
-    Returns:
-      The file path written.
-    """
-    proba = predict_proba_or_score(estimator, X_test)
-    if test_ids is None:
-        ids = pd.Series(np.arange(len(proba)), name="id")
-    else:
-        ids = test_ids.rename("id")
+    Create a Kaggle CSV.
 
-    sub = pd.DataFrame({
-        "id": ids.values,
-        positive_label_name: proba
-    })
+    Columns:
+      - "ID"      (uppercase)
+      - positive_label_name (e.g. "class")
+    output:
+      - "label": hard 0/1 labels
+      - "proba": probabilities
+    """
+    # 1) Get scores/probabilities
+    values = None
+    try:
+        # Binary: take the column for the positive class
+        proba = estimator.predict_proba(X_test)
+        # If class order isn't [0,1], [:,1] will still refer to the positive class
+        values = proba[:, 1]
+    except Exception:
+        # Fallback for models without predict_proba
+        try:
+            scores = estimator.decision_function(X_test)
+            # For "proba" you could normalize, but we leave them as scores
+            values = scores
+        except Exception:
+            # Last fallback: direct prediction
+            preds = estimator.predict(X_test)
+            values = preds.astype(int)
+
+    # 2) Optional: hard labels
+    if output == "label":
+        # If values are already 0/1 they remain; otherwise threshold
+        if values.dtype.kind in "fc":  # float/complex -> threshold
+            values = (values >= threshold).astype(int)
+        else:
+            values = values.astype(int)
+
+    # 3) Set IDs (uppercase "ID")
+    if test_ids is None:
+        ids = pd.Series(np.arange(len(values)), name="ID")
+    else:
+        ids = test_ids.rename("ID")
+
+    # 4) Build DataFrame (columns exactly "ID" and positive_label_name)
+    sub = pd.DataFrame({"ID": ids.values, positive_label_name: values})
+    if output == "label":
+        sub[positive_label_name] = sub[positive_label_name].astype(int)
+
     sub.to_csv(out_path, index=False)
     return out_path
